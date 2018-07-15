@@ -12,7 +12,7 @@ num_layers = 2
 num_classes = 10
 batch_size = 100
 num_epochs = 20
-learning_rate = 0.1
+learning_rate = 0.01
 
 train_dataset = datasets.MNIST(root = './data/', train = True, transform = transforms.ToTensor(), download = True)
 test_dataset = datasets.MNIST(root = './data/', train = False, transform = transforms.ToTensor())
@@ -54,8 +54,8 @@ for epoch in range(num_epochs):
         loss.backward()
         optimizer.step()
 
-#        if (i + 1) % 100 == 0:
-#            print(loss.data[0]);
+        if (i + 1) % 100 == 0:
+            print(loss.data[0])
 
 correct = 0
 total = 0
