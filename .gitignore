@@ -259,3 +259,9 @@ paket-files/
 # Python Tools for Visual Studio (PTVS)
 __pycache__/
 *.pyc
+/BloodPressure/data/data1.npy
+/BloodPressure/data/data2.npy
+/BloodPressure/data/data4.npy
+/BloodPressure/data/data3.npy
+/BloodPressure/l
+/BloodPressure/o

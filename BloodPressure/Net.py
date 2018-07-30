@@ -17,13 +17,11 @@ class BaseBlock(nn.Module):
             nn.BatchNorm1d(self.output_channels//2),
             nn.ReLU(inplace = True),
             nn.Conv1d(self.output_channels//2, self.output_channels, kernel_size = 1, padding = 0),
-            nn.BatchNorm1d(self.output_channels)
             )
         self.conv2 = nn.Sequential(
             nn.Conv1d(self.input_channels, self.output_channels, kernel_size = 5, padding = 2),
-            nn.BatchNorm1d(self.output_channels)
             )
-
+        self.bn = nn.BatchNorm1d(self.output_channels)
     def forward(self, x):
-        return F.relu(self.conv1(x)+self.conv2(x), inplace = True)
+        return self.bn(F.relu(self.conv1(x)+self.conv2(x), inplace = True))
         

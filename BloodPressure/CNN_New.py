@@ -3,14 +3,14 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.utils.data as data
-from math import sqrt
 from torch.autograd import Variable
+import math
 import Net
 class Parameters():
     def __init__(self):
         self.input_size = 512
         self.output_size = 512
-        self.input_channels = 3
+        self.input_channels = 2
         self.channels = 64
 parameters = Parameters()
 
@@ -23,30 +23,33 @@ class CNN(nn.Module):
         self.channels = parameters.channels
         self.conv1 = nn.Sequential(
             nn.Conv1d(self.channels, self.channels, 5, padding = 2),
-            nn.ReLU(inplace=True),
             nn.BatchNorm1d(self.channels),
-            nn.Conv1d(self.channels, 2*self.channels, 5, padding = 2),
             nn.ReLU(inplace=True),
+            nn.Conv1d(self.channels, 2*self.channels, 5, padding = 2),
             nn.BatchNorm1d(2*self.channels),
+            nn.ReLU(inplace=True),
             nn.Conv1d(2*self.channels, self.channels, 5, padding = 2),
+            nn.BatchNorm1d(self.channels)
             )
         self.conv2 = nn.Sequential(
             nn.Conv1d(self.channels, self.channels, 7, padding = 3),
+            nn.BatchNorm1d(self.channels)
             )
         self.conv3 = nn.Sequential(
-            nn.Conv1d(3*self.channels, self.channels, 5, padding = 2),
-            nn.ReLU(inplace=True),
+            nn.Conv1d(self.channels, self.channels, 5, padding = 2),
             nn.BatchNorm1d(self.channels),
-            nn.Conv1d(self.channels, 2*self.channels, 5, padding = 2),
             nn.ReLU(inplace=True),
+            nn.Conv1d(self.channels, 2*self.channels, 5, padding = 2),
             nn.BatchNorm1d(2*self.channels),
+            nn.ReLU(inplace=True),
             nn.Conv1d(2*self.channels, self.channels, 5, padding = 2),
+            nn.BatchNorm1d(self.channels)
             )
         self.conv4 = nn.Sequential(
-            nn.Conv1d(3*self.channels, self.channels, 5, padding = 2),
+            nn.Conv1d(self.channels, self.channels, 5, padding = 2),
+            nn.BatchNorm1d(self.channels)
             )
-        self.bn1 = nn.BatchNorm1d(self.channels)   
-        self.bn2 = nn.BatchNorm1d(self.channels)     
+        
         self.block1 = self.make_layer(Net.BaseBlock, 1, self.channels)
         self.block2 = self.make_layer(Net.BaseBlock, self.channels*self.input_channels, self.channels)
         
@@ -59,11 +62,7 @@ class CNN(nn.Module):
             nn.BatchNorm1d(self.channels)
             )
         self.output = nn.Conv1d(2*self.channels, 1, 9, padding = 4)
-        self.fc = nn.Sequential(
-            nn.Linear(self.output_size, 1024),
-            nn.ReLU(inplace = True),
-            nn.Linear(1024, 2)
-        )
+
     def make_layer(self, block, input_channels, output_channels, BlockNum = 1):
         layer = []
         for i in range(BlockNum):
@@ -75,59 +74,57 @@ class CNN(nn.Module):
     def forward(self, x):
         x0 = x[:,0].view(-1,1,self.input_size)
         x1 = x[:,1].view(-1,1,self.input_size)
-        x2 = x[:,2].view(-1,1,self.input_size)
         b0 = self.block1(x0)
         b1 = self.block1(x1)
-        b2 = self.block1(x2)
         c10 = self.conv1(b0)
         c20 = self.conv2(b0)
         c11 = self.conv1(b1)
         c21 = self.conv2(b1)
-        c12 = self.conv1(b2)
-        c22 = self.conv2(b2)
-        r0 = self.bn1(F.relu(c10+c20))
-        r1 = self.bn1(F.relu(c11+c21))
-        r2 = self.bn1(F.relu(c12+c22))
-        r = torch.cat((r0,r1,r2),1)
+        r0 = F.relu(c10+c20)
+        r1 = F.relu(c11+c21)
+        r = torch.cat((r0,r1),1)
         br = self.block2(r)
-        fr = self.bn2(F.relu(self.conv3(r)+self.conv4(r)))
+        fr = F.relu(self.conv3(br)+self.conv4(br))
         ul = self.Ul(fr)
         ur = self.Ur(ul)
         c = torch.cat((ur, fr), 1)
         out = self.output(c)
-        out = out.view(-1,self.output_size)
-        return self.fc(out)
+        return out.view(-1,self.output_size)
 
 cnn = CNN(parameters)
 cnn.cuda()
 
 train_data = []
-train_label = []
 test_data = []
-test_label = []
 tr = 0
 te = 0
-for i in range(6):
-    M = np.load('data/3000393/%d.npy'%(i))
-    for j in range(M.shape[0]//parameters.input_size):
-        M1 = M[j*parameters.input_size:(j+1)*parameters.input_size,1]
-        M2 = M[j*parameters.input_size:(j+1)*parameters.input_size,2]
-        M3 = M[j*parameters.input_size:(j+1)*parameters.input_size,3]
-        Label = M[j*parameters.input_size:(j+1)*parameters.input_size,4]
-        if i < 4 and tr < 9000:
-            tr+=1
+# 0 PPG , 1 Blood Pressure, 2 ECG
+Mtrain = np.load('data/data1.npy')
+Mtest  = np.load('data/data2.npy')
+for i in range(3000):
+    Mpeople = Mtrain[i]
+    if Mpeople.shape[0] > 32* parameters.input_size:
+        for j in range(32):
+            M1 = Mpeople[j*parameters.input_size:(j+1)*parameters.input_size,0]
+            M2 = Mpeople[j*parameters.input_size:(j+1)*parameters.input_size,2]
+            M3 = Mpeople[j*parameters.input_size:(j+1)*parameters.input_size,1]
             train_data.append([M1,M2,M3])
-            train_label.append([max(Label),min(Label)])
-        elif te < 200:
-            te+=1
+            tr +=1
+for i in range(500):
+    Mpeople = Mtrain[i]
+    if Mpeople.shape[0] > 32* parameters.input_size:
+        for j in range(32):
+            M1 = Mpeople[j*parameters.input_size:(j+1)*parameters.input_size,0]
+            M2 = Mpeople[j*parameters.input_size:(j+1)*parameters.input_size,2]
+            M3 = Mpeople[j*parameters.input_size:(j+1)*parameters.input_size,1]
             test_data.append([M1,M2,M3])
-            test_label.append([max(Label),min(Label)])
+            te +=1
 
 
-train_dataset = [torch.Tensor(train_data).float(), torch.Tensor(train_label).float()]
-test_dataset = [torch.Tensor(test_data).float(), torch.Tensor(test_label).float()]
+train_dataset = torch.Tensor(train_data).float()
+test_dataset = torch.Tensor(test_data).float()
 
-criterion = nn.MSELoss(size_average = False)
+criterion = nn.MSELoss()
 optimizer = torch.optim.Adam(cnn.parameters())
 
 class MIMIC(data.Dataset):
@@ -135,8 +132,8 @@ class MIMIC(data.Dataset):
         self.train = train
         self.dataset = dataset
     def __getitem__(self, index):
-        signals = self.dataset[0][index]
-        label = self.dataset[1][index]
+        signals = self.dataset[index][0:2]
+        label = self.dataset[index][2]
         return signals, label
     def __len__(self):
         if self.train:
@@ -147,14 +144,15 @@ train_dataset = MIMIC(train_dataset,True)
 test_dataset = MIMIC(test_dataset,False)
 
 train_loader = torch.utils.data.DataLoader(dataset = train_dataset, batch_size = 64, shuffle = True)
-test_loader = torch.utils.data.DataLoader(dataset = test_dataset, batch_size = 200, shuffle = False)
+test_loader = torch.utils.data.DataLoader(dataset = test_dataset, batch_size = 32, shuffle = False)
 
 i =1
+cnn.train()
 for epoch in range(200):
     eloss = 0
     for signals, labels in train_loader:
         signals = Variable(signals.view(-1,parameters.input_channels,parameters.input_size)).cuda()
-        labels = Variable(labels.view(-1,2)).cuda()
+        labels = Variable(labels.view(-1,parameters.output_size)).cuda()
 
         optimizer.zero_grad()
         outputs = cnn(signals)
@@ -162,9 +160,8 @@ for epoch in range(200):
         loss.backward()
         optimizer.step()
         eloss+=loss.cpu().detach().numpy()
-    print(sqrt(eloss/tr))
+    print(math.sqrt(eloss/tr*64))
 
-testloss = 0
 '''
 def draw(f1,f2):
     t = np.arange(1,256,1)
@@ -172,17 +169,26 @@ def draw(f1,f2):
     plt.plot(t,f2,'r')
     plt.show()
     '''
-j = 1
-for signals, labels in test_loader:
+def test():
+    cnn.eval()
+    testloss = 0
+    j = 0    
+    _l = []
+    _o = []
+    for signals, labels in test_loader:
+        signals = torch.Tensor(signals.view(-1,parameters.input_channels,parameters.input_size)).cuda()
+        labels = torch.Tensor(labels.view(-1,parameters.output_size)).cuda()
+        outputs = cnn(signals)
+        testloss += criterion(outputs, labels).item()
+        if j == 0:
+            _l = labels.cpu().numpy()
+            _o = outputs.cpu().detach().numpy()
+        else:
+            _l = np.vstack((_l, labels.cpu().numpy()))
+            _o = np.vstack((_o, outputs.cpu().detach().numpy()))
+        j+=1
+    np.savetxt('l', _l)
+    np.savetxt('o', _o)
+    print('testloss %f'%(math.sqrt(testloss/te*32)))
     
-    signals = Variable(signals.view(-1,parameters.input_channels,parameters.input_size)).cuda()
-    labels = Variable(labels.view(-1,2)).cuda()
-    outputs = cnn(signals)
-    
-    np.savetxt('l%d'%(j),labels.cpu().numpy())
-    np.savetxt('t%d'%(j),outputs.cpu().detach().numpy())
-    j+=1
-#    draw(labels,signals)
-    testloss += criterion(outputs, labels)
-print('testloss %f'%(sqrt(testloss/200)))
-    
+test()
