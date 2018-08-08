@@ -21,47 +21,45 @@ class CNN(nn.Module):
         self.output_size = parameters.output_size
         self.input_channels = parameters.input_channels
         self.channels = parameters.channels
-        self.conv1 = nn.Sequential(
-            nn.Conv1d(self.channels, self.channels, 5, padding = 2),
-            nn.BatchNorm1d(self.channels),
-            nn.ReLU(inplace=True),
-            nn.Conv1d(self.channels, 2*self.channels, 5, padding = 2),
-            nn.BatchNorm1d(2*self.channels),
-            nn.ReLU(inplace=True),
-            nn.Conv1d(2*self.channels, self.channels, 5, padding = 2),
-            nn.BatchNorm1d(self.channels)
+        self.blockl = self.make_layer(Net.BaseBlock, 2, self.channels)
+        self.blockl1 = self.make_layer(Net.BaseBlock, self.channels*2, self.channels*2)
+        self.blockl2 = self.make_layer(Net.BaseBlock, self.channels*4, self.channels*4)
+        
+        self.blocku2 = self.make_layer(Net.BaseBlock, self.channels*8, self.channels*4)
+        self.blocku1 = self.make_layer(Net.BaseBlock, self.channels*4, self.channels*2)
+        self.blocku = self.make_layer(Net.BaseBlock, self.channels*2, 1)
+        #Convolution with stride
+        self.convs = nn.Sequential(
+            nn.Conv1d(self.channels, self.channels*2, 5, stride = 2, padding = 2),
+            nn.BatchNorm1d(self.channels*2),
+            nn.ReLU(inplace=True)
             )
-        self.conv2 = nn.Sequential(
-            nn.Conv1d(self.channels, self.channels, 7, padding = 3),
-            nn.BatchNorm1d(self.channels)
+        self.convs1 = nn.Sequential(
+            nn.Conv1d(self.channels*2, self.channels*4, 5, stride = 2, padding = 2),
+            nn.BatchNorm1d(self.channels*4),
+            nn.ReLU(inplace=True)
             )
-        self.conv3 = nn.Sequential(
-            nn.Conv1d(self.channels, self.channels, 5, padding = 2),
-            nn.BatchNorm1d(self.channels),
-            nn.ReLU(inplace=True),
-            nn.Conv1d(self.channels, 2*self.channels, 5, padding = 2),
-            nn.BatchNorm1d(2*self.channels),
-            nn.ReLU(inplace=True),
-            nn.Conv1d(2*self.channels, self.channels, 5, padding = 2),
-            nn.BatchNorm1d(self.channels)
-            )
-        self.conv4 = nn.Sequential(
-            nn.Conv1d(self.channels, self.channels, 5, padding = 2),
-            nn.BatchNorm1d(self.channels)
+        self.convs2 = nn.Sequential(
+            nn.Conv1d(self.channels*4, self.channels*8, 5, stride = 2, padding = 2),
+            nn.BatchNorm1d(self.channels*8),
+            nn.ReLU(inplace=True)
             )
         
-        self.block1 = self.make_layer(Net.BaseBlock, 1, self.channels)
-        self.block2 = self.make_layer(Net.BaseBlock, self.channels*self.input_channels, self.channels)
-        
-        self.Ul = nn.Sequential(
-            nn.Conv1d(self.channels, self.channels, kernel_size = 5, stride = 2, padding = 2),
-            nn.BatchNorm1d(self.channels)
+        self.convt2 = nn.Sequential(
+            nn.ConvTranspose1d(self.channels*8, self.channels*4, 5, stride = 2, padding=2, output_padding=1),
+            nn.BatchNorm1d(self.channels*4),
+            nn.ReLU(inplace=True)
             )
-        self.Ur = nn.Sequential(
-            nn.ConvTranspose1d(self.channels, self.channels, kernel_size = 5, stride = 2, padding = 2, output_padding = 1),
-            nn.BatchNorm1d(self.channels)
+        self.convt1 = nn.Sequential(
+            nn.ConvTranspose1d(self.channels*4, self.channels*2, 5, stride = 2, padding=2, output_padding=1),
+            nn.BatchNorm1d(self.channels*2),
+            nn.ReLU(inplace=True)
             )
-        self.output = nn.Conv1d(2*self.channels, 1, 9, padding = 4)
+        self.convt = nn.Sequential(
+            nn.ConvTranspose1d(self.channels*2, self.channels, 5, stride = 2, padding=2, output_padding=1),
+            nn.BatchNorm1d(self.channels),
+            nn.ReLU(inplace=True)
+            )
 
     def make_layer(self, block, input_channels, output_channels, BlockNum = 1):
         layer = []
@@ -72,25 +70,22 @@ class CNN(nn.Module):
                 layer.append(block(output_channels, output_channels))        
         return nn.Sequential(*layer)
     def forward(self, x):
-        x0 = x[:,0].view(-1,1,self.input_size)
-        x1 = x[:,1].view(-1,1,self.input_size)
-        b0 = self.block1(x0)
-        b1 = self.block1(x1)
-        c10 = self.conv1(b0)
-        c20 = self.conv2(b0)
-        c11 = self.conv1(b1)
-        c21 = self.conv2(b1)
-        r0 = F.relu(c10+c20)
-        r1 = F.relu(c11+c21)
-        r = torch.cat((r0,r1),1)
-        br = self.block2(r)
-        fr = F.relu(self.conv3(br)+self.conv4(br))
-        ul = self.Ul(fr)
-        ur = self.Ur(ul)
-        c = torch.cat((ur, fr), 1)
-        out = self.output(c)
-        return out.view(-1,self.output_size)
-
+        l = self.blockl(x)
+        x1 = self.convs(l)
+        l1 = self.blockl1(x1)
+        x2 = self.convs1(l1)
+        l2 = self.blockl2(x2)
+        x3 = self.convs2(l2)
+        y2 = self.convt2(x3)
+        z2 = torch.cat((l2, y2), 1)
+        u2 = self.blocku2(z2)
+        y1 = self.convt1(u2)     
+        z1 = torch.cat((l1, y1), 1)
+        u1 = self.blocku1(z1)
+        y = self.convt(u1)
+        z = torch.cat((l,y), 1)
+        u = self.blocku(z)
+        return u.view(-1, self.output_size)
 cnn = CNN(parameters)
 cnn.cuda()
 
