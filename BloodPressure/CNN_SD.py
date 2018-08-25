@@ -10,7 +10,7 @@ class Parameters():
     def __init__(self):
         self.input_size = 512
         self.output_size = 512
-        self.input_channels = 3
+        self.input_channels = 2
         self.channels = 64
 parameters = Parameters()
 
@@ -21,49 +21,46 @@ class CNN(nn.Module):
         self.output_size = parameters.output_size
         self.input_channels = parameters.input_channels
         self.channels = parameters.channels
-        self.conv1 = nn.Sequential(
-            nn.Conv1d(self.channels, self.channels, 5, padding = 2),
-            nn.ReLU(inplace=True),
-            nn.BatchNorm1d(self.channels),
-            nn.Conv1d(self.channels, 2*self.channels, 5, padding = 2),
-            nn.ReLU(inplace=True),
-            nn.BatchNorm1d(2*self.channels),
-            nn.Conv1d(2*self.channels, self.channels, 5, padding = 2),
-            )
-        self.conv2 = nn.Sequential(
-            nn.Conv1d(self.channels, self.channels, 7, padding = 3),
-            )
-        self.conv3 = nn.Sequential(
-            nn.Conv1d(3*self.channels, self.channels, 5, padding = 2),
-            nn.ReLU(inplace=True),
-            nn.BatchNorm1d(self.channels),
-            nn.Conv1d(self.channels, 2*self.channels, 5, padding = 2),
-            nn.ReLU(inplace=True),
-            nn.BatchNorm1d(2*self.channels),
-            nn.Conv1d(2*self.channels, self.channels, 5, padding = 2),
-            )
-        self.conv4 = nn.Sequential(
-            nn.Conv1d(3*self.channels, self.channels, 5, padding = 2),
-            )
-        self.bn1 = nn.BatchNorm1d(self.channels)   
-        self.bn2 = nn.BatchNorm1d(self.channels)     
-        self.block1 = self.make_layer(Net.BaseBlock, 1, self.channels)
-        self.block2 = self.make_layer(Net.BaseBlock, self.channels*self.input_channels, self.channels)
+        self.blockl = self.make_layer(Net.BaseBlock, 2, self.channels)
+        self.blockl1 = self.make_layer(Net.BaseBlock, self.channels*2, self.channels*2)
+        self.blockl2 = self.make_layer(Net.BaseBlock, self.channels*4, self.channels*4)
         
-        self.Ul = nn.Sequential(
-            nn.Conv1d(self.channels, self.channels, kernel_size = 5, stride = 2, padding = 2),
-            nn.BatchNorm1d(self.channels)
+        self.blocku2 = self.make_layer(Net.BaseBlock, self.channels*8, self.channels*4)
+        self.blocku1 = self.make_layer(Net.BaseBlock, self.channels*4, self.channels*2)
+        self.blocku = self.make_layer(Net.BaseBlock, self.channels*2, 1)
+        #Convolution with stride
+        self.convs = nn.Sequential(
+            nn.Conv1d(self.channels, self.channels*2, 5, stride = 2, padding = 2),
+            nn.BatchNorm1d(self.channels*2),
+            nn.ReLU(inplace=True)
             )
-        self.Ur = nn.Sequential(
-            nn.ConvTranspose1d(self.channels, self.channels, kernel_size = 5, stride = 2, padding = 2, output_padding = 1),
-            nn.BatchNorm1d(self.channels)
+        self.convs1 = nn.Sequential(
+            nn.Conv1d(self.channels*2, self.channels*4, 5, stride = 2, padding = 2),
+            nn.BatchNorm1d(self.channels*4),
+            nn.ReLU(inplace=True)
             )
-        self.output = nn.Conv1d(2*self.channels, 1, 9, padding = 4)
-        self.fc = nn.Sequential(
-            nn.Linear(self.output_size, 1024),
-            nn.ReLU(inplace = True),
-            nn.Linear(1024, 2)
-        )
+        self.convs2 = nn.Sequential(
+            nn.Conv1d(self.channels*4, self.channels*8, 5, stride = 2, padding = 2),
+            nn.BatchNorm1d(self.channels*8),
+            nn.ReLU(inplace=True)
+            )
+        
+        self.convt2 = nn.Sequential(
+            nn.ConvTranspose1d(self.channels*8, self.channels*4, 5, stride = 2, padding=2, output_padding=1),
+            nn.BatchNorm1d(self.channels*4),
+            nn.ReLU(inplace=True)
+            )
+        self.convt1 = nn.Sequential(
+            nn.ConvTranspose1d(self.channels*4, self.channels*2, 5, stride = 2, padding=2, output_padding=1),
+            nn.BatchNorm1d(self.channels*2),
+            nn.ReLU(inplace=True)
+            )
+        self.convt = nn.Sequential(
+            nn.ConvTranspose1d(self.channels*2, self.channels, 5, stride = 2, padding=2, output_padding=1),
+            nn.BatchNorm1d(self.channels),
+            nn.ReLU(inplace=True)
+            )
+        
     def make_layer(self, block, input_channels, output_channels, BlockNum = 1):
         layer = []
         for i in range(BlockNum):
@@ -73,56 +70,57 @@ class CNN(nn.Module):
                 layer.append(block(output_channels, output_channels))        
         return nn.Sequential(*layer)
     def forward(self, x):
-        x0 = x[:,0].view(-1,1,self.input_size)
-        x1 = x[:,1].view(-1,1,self.input_size)
-        x2 = x[:,2].view(-1,1,self.input_size)
-        b0 = self.block1(x0)
-        b1 = self.block1(x1)
-        b2 = self.block1(x2)
-        c10 = self.conv1(b0)
-        c20 = self.conv2(b0)
-        c11 = self.conv1(b1)
-        c21 = self.conv2(b1)
-        c12 = self.conv1(b2)
-        c22 = self.conv2(b2)
-        r0 = self.bn1(F.relu(c10+c20))
-        r1 = self.bn1(F.relu(c11+c21))
-        r2 = self.bn1(F.relu(c12+c22))
-        r = torch.cat((r0,r1,r2),1)
-        br = self.block2(r)
-        fr = self.bn2(F.relu(self.conv3(r)+self.conv4(r)))
-        ul = self.Ul(fr)
-        ur = self.Ur(ul)
-        c = torch.cat((ur, fr), 1)
-        out = self.output(c)
-        out = out.view(-1,self.output_size)
-        return self.fc(out)
-
+        l = self.blockl(x)
+        x1 = self.convs(l)
+        l1 = self.blockl1(x1)
+        x2 = self.convs1(l1)
+        l2 = self.blockl2(x2)
+        x3 = self.convs2(l2)
+        y2 = self.convt2(x3)
+        z2 = torch.cat((l2, y2), 1)
+        u2 = self.blocku2(z2)
+        y1 = self.convt1(u2)     
+        z1 = torch.cat((l1, y1), 1)
+        u1 = self.blocku1(z1)
+        y = self.convt(u1)
+        z = torch.cat((l,y), 1)
+        u = self.blocku(z)
+        p = u.view(-1, self.output_size)
+        dia = torch.max(p,1)[0]
+        sys = torch.min(p,1)[0]
+        return torch.stack((dia, sys), 1)
 cnn = CNN(parameters)
 cnn.cuda()
 
 train_data = []
-train_label = []
 test_data = []
+train_label = []
 test_label = []
 tr = 0
 te = 0
-for i in range(6):
-    M = np.load('data/3000393/%d.npy'%(i))
-    for j in range(M.shape[0]//parameters.input_size):
-        M1 = M[j*parameters.input_size:(j+1)*parameters.input_size,1]
-        M2 = M[j*parameters.input_size:(j+1)*parameters.input_size,2]
-        M3 = M[j*parameters.input_size:(j+1)*parameters.input_size,3]
-        Label = M[j*parameters.input_size:(j+1)*parameters.input_size,4]
-        if i < 4 and tr < 9000:
-            tr+=1
-            train_data.append([M1,M2,M3])
+# 0 PPG , 1 Blood Pressure, 2 ECG
+Mtrain = np.load('data/data1.npy')
+Mtest  = np.load('data/data2.npy')
+for i in range(3000):
+    Mpeople = Mtrain[i]
+    if Mpeople.shape[0] > 32* parameters.input_size:
+        for j in range(32):
+            M1 = Mpeople[j*parameters.input_size:(j+1)*parameters.input_size,0]
+            M2 = Mpeople[j*parameters.input_size:(j+1)*parameters.input_size,2]
+            Label = Mpeople[j*parameters.input_size:(j+1)*parameters.input_size,1]
+            train_data.append([M1,M2])
             train_label.append([max(Label),min(Label)])
-        elif te < 200:
-            te+=1
-            test_data.append([M1,M2,M3])
+            tr +=1
+for i in range(500):
+    Mpeople = Mtrain[i]
+    if Mpeople.shape[0] > 32* parameters.input_size:
+        for j in range(32):
+            M1 = Mpeople[j*parameters.input_size:(j+1)*parameters.input_size,0]
+            M2 = Mpeople[j*parameters.input_size:(j+1)*parameters.input_size,2]
+            Label = Mpeople[j*parameters.input_size:(j+1)*parameters.input_size,1]
+            test_data.append([M1,M2])
             test_label.append([max(Label),min(Label)])
-
+            te += 1
 
 train_dataset = [torch.Tensor(train_data).float(), torch.Tensor(train_label).float()]
 test_dataset = [torch.Tensor(test_data).float(), torch.Tensor(test_label).float()]
@@ -147,7 +145,7 @@ train_dataset = MIMIC(train_dataset,True)
 test_dataset = MIMIC(test_dataset,False)
 
 train_loader = torch.utils.data.DataLoader(dataset = train_dataset, batch_size = 64, shuffle = True)
-test_loader = torch.utils.data.DataLoader(dataset = test_dataset, batch_size = 200, shuffle = False)
+test_loader = torch.utils.data.DataLoader(dataset = test_dataset, batch_size = 32, shuffle = False)
 
 i =1
 for epoch in range(200):
@@ -165,24 +163,23 @@ for epoch in range(200):
     print(sqrt(eloss/tr))
 
 testloss = 0
-'''
-def draw(f1,f2):
-    t = np.arange(1,256,1)
-    plt.plot(t,f1,'g')
-    plt.plot(t,f2,'r')
-    plt.show()
-    '''
-j = 1
+j = 0
+_lsd = []
+_osd = []
 for signals, labels in test_loader:
     
-    signals = Variable(signals.view(-1,parameters.input_channels,parameters.input_size)).cuda()
-    labels = Variable(labels.view(-1,2)).cuda()
+    signals = torch.Tensor(signals.view(-1,parameters.input_channels,parameters.input_size)).cuda()
+    labels = torch.Tensor(labels.view(-1,2)).cuda()
     outputs = cnn(signals)
-    
-    np.savetxt('l%d'%(j),labels.cpu().numpy())
-    np.savetxt('t%d'%(j),outputs.cpu().detach().numpy())
+    if j == 0:
+        _lsd = labels.cpu().numpy()
+        _osd = outputs.cpu().detach().numpy()
+    else:
+        _lsd = np.vstack((_lsd, labels.cpu().numpy()))
+        _osd = np.vstack((_osd, outputs.cpu().detach().numpy()))
     j+=1
-#    draw(labels,signals)
-    testloss += criterion(outputs, labels)
-print('testloss %f'%(sqrt(testloss/200)))
+    testloss += criterion(outputs, labels).item()
     
+np.savetxt('lsd', _lsd)
+np.savetxt('osd', _osd)
+torch.save(cnn, 'modelsd.pkl')

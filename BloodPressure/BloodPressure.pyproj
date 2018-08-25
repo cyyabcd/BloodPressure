@@ -4,7 +4,7 @@
     <SchemaVersion>2.0</SchemaVersion>
     <ProjectGuid>89f9c1a8-1221-4b3e-bd48-8161e8156877</ProjectGuid>
     <ProjectHome>.</ProjectHome>
-    <StartupFile>CNN_New.py</StartupFile>
+    <StartupFile>CNN_SD.py</StartupFile>
     <SearchPath>
     </SearchPath>
     <WorkingDirectory>.</WorkingDirectory>

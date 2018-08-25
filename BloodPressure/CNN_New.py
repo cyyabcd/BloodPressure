@@ -185,5 +185,5 @@ def test():
     np.savetxt('l', _l)
     np.savetxt('o', _o)
     print('testloss %f'%(math.sqrt(testloss/te*32)))
-    
+torch.save(cnn, 'model.pkl')
 test()
