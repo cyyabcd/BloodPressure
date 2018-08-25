@@ -1,5 +1,5 @@
-A = load('l1');
-B = load('t1');
+% A = load('l');
+% B = load('o');
 x = 1:512;
-l = 6;
+l = 10856;
 plot(x,A(l,:),'r',x,B(l,:),'g')

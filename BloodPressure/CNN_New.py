@@ -3,8 +3,8 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.utils.data as data
-from math import sqrt
 from torch.autograd import Variable
+import math
 import Net
 class Parameters():
     def __init__(self):
@@ -60,7 +60,7 @@ class CNN(nn.Module):
             nn.BatchNorm1d(self.channels),
             nn.ReLU(inplace=True)
             )
-        
+
     def make_layer(self, block, input_channels, output_channels, BlockNum = 1):
         layer = []
         for i in range(BlockNum):
@@ -85,17 +85,12 @@ class CNN(nn.Module):
         y = self.convt(u1)
         z = torch.cat((l,y), 1)
         u = self.blocku(z)
-        p = u.view(-1, self.output_size)
-        dia = torch.max(p,1)[0]
-        sys = torch.min(p,1)[0]
-        return torch.stack((dia, sys), 1)
+        return u.view(-1, self.output_size)
 cnn = CNN(parameters)
 cnn.cuda()
 
 train_data = []
 test_data = []
-train_label = []
-test_label = []
 tr = 0
 te = 0
 # 0 PPG , 1 Blood Pressure, 2 ECG
@@ -107,9 +102,8 @@ for i in range(3000):
         for j in range(32):
             M1 = Mpeople[j*parameters.input_size:(j+1)*parameters.input_size,0]
             M2 = Mpeople[j*parameters.input_size:(j+1)*parameters.input_size,2]
-            Label = Mpeople[j*parameters.input_size:(j+1)*parameters.input_size,1]
-            train_data.append([M1,M2])
-            train_label.append([max(Label),min(Label)])
+            M3 = Mpeople[j*parameters.input_size:(j+1)*parameters.input_size,1]
+            train_data.append([M1,M2,M3])
             tr +=1
 for i in range(500):
     Mpeople = Mtrain[i]
@@ -117,15 +111,15 @@ for i in range(500):
         for j in range(32):
             M1 = Mpeople[j*parameters.input_size:(j+1)*parameters.input_size,0]
             M2 = Mpeople[j*parameters.input_size:(j+1)*parameters.input_size,2]
-            Label = Mpeople[j*parameters.input_size:(j+1)*parameters.input_size,1]
-            test_data.append([M1,M2])
-            test_label.append([max(Label),min(Label)])
-            te += 1
+            M3 = Mpeople[j*parameters.input_size:(j+1)*parameters.input_size,1]
+            test_data.append([M1,M2,M3])
+            te +=1
 
-train_dataset = [torch.Tensor(train_data).float(), torch.Tensor(train_label).float()]
-test_dataset = [torch.Tensor(test_data).float(), torch.Tensor(test_label).float()]
 
-criterion = nn.MSELoss(size_average = False)
+train_dataset = torch.Tensor(train_data).float()
+test_dataset = torch.Tensor(test_data).float()
+
+criterion = nn.MSELoss()
 optimizer = torch.optim.Adam(cnn.parameters())
 
 class MIMIC(data.Dataset):
@@ -133,8 +127,8 @@ class MIMIC(data.Dataset):
         self.train = train
         self.dataset = dataset
     def __getitem__(self, index):
-        signals = self.dataset[0][index]
-        label = self.dataset[1][index]
+        signals = self.dataset[index][0:2]
+        label = self.dataset[index][2]
         return signals, label
     def __len__(self):
         if self.train:
@@ -148,11 +142,12 @@ train_loader = torch.utils.data.DataLoader(dataset = train_dataset, batch_size =
 test_loader = torch.utils.data.DataLoader(dataset = test_dataset, batch_size = 32, shuffle = False)
 
 i =1
+cnn.train()
 for epoch in range(200):
     eloss = 0
     for signals, labels in train_loader:
         signals = Variable(signals.view(-1,parameters.input_channels,parameters.input_size)).cuda()
-        labels = Variable(labels.view(-1,2)).cuda()
+        labels = Variable(labels.view(-1,parameters.output_size)).cuda()
 
         optimizer.zero_grad()
         outputs = cnn(signals)
@@ -160,26 +155,35 @@ for epoch in range(200):
         loss.backward()
         optimizer.step()
         eloss+=loss.cpu().detach().numpy()
-    print(sqrt(eloss/tr))
+    print(math.sqrt(eloss/tr*64))
 
-testloss = 0
-j = 0
-_lsd = []
-_osd = []
-for signals, labels in test_loader:
-    
-    signals = torch.Tensor(signals.view(-1,parameters.input_channels,parameters.input_size)).cuda()
-    labels = torch.Tensor(labels.view(-1,2)).cuda()
-    outputs = cnn(signals)
-    if j == 0:
-        _lsd = labels.cpu().numpy()
-        _osd = outputs.cpu().detach().numpy()
-    else:
-        _lsd = np.vstack((_lsd, labels.cpu().numpy()))
-        _osd = np.vstack((_osd, outputs.cpu().detach().numpy()))
-    j+=1
-    testloss += criterion(outputs, labels).item()
-    
-np.savetxt('lsd', _lsd)
-np.savetxt('osd', _osd)
-torch.save(cnn, 'modelsd.pkl')
+'''
+def draw(f1,f2):
+    t = np.arange(1,256,1)
+    plt.plot(t,f1,'g')
+    plt.plot(t,f2,'r')
+    plt.show()
+    '''
+def test():
+    cnn.eval()
+    testloss = 0
+    j = 0    
+    _l = []
+    _o = []
+    for signals, labels in test_loader:
+        signals = torch.Tensor(signals.view(-1,parameters.input_channels,parameters.input_size)).cuda()
+        labels = torch.Tensor(labels.view(-1,parameters.output_size)).cuda()
+        outputs = cnn(signals)
+        testloss += criterion(outputs, labels).item()
+        if j == 0:
+            _l = labels.cpu().numpy()
+            _o = outputs.cpu().detach().numpy()
+        else:
+            _l = np.vstack((_l, labels.cpu().numpy()))
+            _o = np.vstack((_o, outputs.cpu().detach().numpy()))
+        j+=1
+    np.savetxt('l', _l)
+    np.savetxt('o', _o)
+    print('testloss %f'%(math.sqrt(testloss/te*32)))
+torch.save(cnn, 'model.pkl')
+test()

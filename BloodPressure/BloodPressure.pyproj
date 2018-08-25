@@ -25,6 +25,9 @@
     <Compile Include="CNN.py">
       <SubType>Code</SubType>
     </Compile>
+    <Compile Include="CNN_New.py">
+      <SubType>Code</SubType>
+    </Compile>
     <Compile Include="CNN_SD.py">
       <SubType>Code</SubType>
     </Compile>
