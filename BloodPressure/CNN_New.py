@@ -94,10 +94,17 @@ test_data = []
 tr = 0
 te = 0
 # 0 PPG , 1 Blood Pressure, 2 ECG
-Mtrain = np.load('data/data1.npy')
-Mtest  = np.load('data/data2.npy')
-for i in range(3000):
-    Mpeople = Mtrain[i]
+Mtrain1 = np.load('data/data1.npy')
+Mtrain2 = np.load('data/data2.npy')
+Mtrain3 = np.load('data/data3.npy')
+Mtest  = np.load('data/data4.npy')
+for i in range(9000):
+    if i < 3000:
+        Mpeople = Mtrain1[i]
+    elif i < 6000:
+        Mpeople = Mtrain2[i - 3000]
+    else:
+        Mpeople = Mtrain3[i - 6000]
     if Mpeople.shape[0] > 32* parameters.input_size:
         for j in range(32):
             M1 = Mpeople[j*parameters.input_size:(j+1)*parameters.input_size,0]
@@ -105,8 +112,8 @@ for i in range(3000):
             M3 = Mpeople[j*parameters.input_size:(j+1)*parameters.input_size,1]
             train_data.append([M1,M2,M3])
             tr +=1
-for i in range(500):
-    Mpeople = Mtrain[i]
+for i in range(3000):
+    Mpeople = Mtest[i]
     if Mpeople.shape[0] > 32* parameters.input_size:
         for j in range(32):
             M1 = Mpeople[j*parameters.input_size:(j+1)*parameters.input_size,0]
@@ -143,7 +150,7 @@ test_loader = torch.utils.data.DataLoader(dataset = test_dataset, batch_size = 3
 
 i =1
 cnn.train()
-for epoch in range(200):
+for epoch in range(1):
     eloss = 0
     for signals, labels in train_loader:
         signals = Variable(signals.view(-1,parameters.input_channels,parameters.input_size)).cuda()
